@@ -129,7 +129,7 @@ Your choice is saved automatically.
 - Weather from [wttr.in](https://github.com/chubin/wttr.in).
 - Exchange rates from [ExchangeRate-API](https://www.exchangerate-api.com) (open‑source tier).
 
-**Disclosure:** The source code was generated/optimized using Deepseek. The logic, styling, UI/UX was reviewed, tested, and modified by me, a human developer.
+**Disclosure:** The source code was generated/optimized using Deepseek AI. The logic, styling, UI/UX was reviewed, tested, and modified by me, a human developer.
 
 ---
 
