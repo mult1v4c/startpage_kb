@@ -128,7 +128,8 @@ Your choice is saved automatically.
 - Matrix rain inspired by the classic effect.
 - Weather from [wttr.in](https://github.com/chubin/wttr.in).
 - Exchange rates from [ExchangeRate-API](https://www.exchangerate-api.com) (open‑source tier).
-- Built with the help of AI tools
+
+**Disclosure:** The source code was generated/optimized using Deepseek. The logic, styling, UI/UX was reviewed, tested, and modified by me, a human developer.
 
 ---
 
