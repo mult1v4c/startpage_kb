@@ -1,0 +1,452 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Fira+Code:wght@400;500&display=swap');
+
+/* -- Reset -------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* ── Base16 semantic mapping ── */
+  --bg:              var(--base00);
+  --surface:         var(--base01);
+  --border:          var(--base03);
+  --text:            var(--base05);   /* standard foreground – readable everywhere */
+  --muted:           var(--base04);   /* secondary text – visible but subtle */
+  --accent:          var(--base0B);
+  --accent-dim:      var(--base02);   /* still fine for borders / dim highlights */
+  --danger:          var(--base08);
+  --info:            var(--base0D);   /* blue – informative elements */
+  --success:         var(--base0B);   /* green – positive results */
+  --warning:         var(--base09);   /* orange – mild emphasis */
+  --highlight:       var(--base0A);   /* yellow – strong attention */
+  --alternate:       var(--base0C);   /* cyan – supplementary accent */
+  --special:         var(--base0E);   /* violet – unique markers */
+  --subtle-accent:   var(--base0F);   /* brown – barely‑there highlight */
+
+  /* -- Typography & layout -- */
+  --font:           'IBM Plex Mono', 'Fira Code', 'Source Code Pro', 'Courier New', monospace;
+  --fs:             0.88rem;
+  --lh:             1.65;
+  --w:              min(680px, 90vw);
+  --row-h:          calc(var(--fs) * var(--lh));
+  --history-rows:   10;
+  --history-h:      calc(var(--history-rows) * var(--row-h) + 0.8rem);
+  --input-h:        calc(var(--row-h) + 0.9rem);
+  --box-h:          calc(var(--history-h) + var(--input-h));
+  --ambient-h:      calc(var(--row-h) + 0.5rem);
+  --gap:            0.6rem;
+  --matrix-opacity: 0.9;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* -- Page wrapper — vertically centers the whole stack ----- */
+#page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* -- Ambient (clock left, weather right) ------------------- */
+#ambient {
+  width: var(--w);
+  height: var(--ambient-h);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--gap);
+  font-size: var(--fs);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* -- Terminal box ------------------------------------------- */
+#terminal {
+  width: var(--w);
+  height: var(--box-h);
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  position: relative; /* Added to anchor the absolute suggestions */
+}
+
+/* -- Output log (history) — fixed height, fade top --------- */
+#output-log {
+  height: var(--history-h);
+  flex-shrink: 0;
+  padding: 0.8rem; /* CHANGED to uniform padding */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;   /* entries stack from bottom up */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%, black 100%);
+  mask-image:         linear-gradient(to bottom, transparent 0%, black 30%, black 100%);
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  gap: 0 0.4rem;
+  font-size: var(--fs);
+  line-height: var(--lh);
+  flex-shrink: 0;
+}
+.log-entry.cmd-echo { color: var(--alternate); }
+.log-entry.result   { color: var(--accent); }
+.log-entry.error    { color: var(--danger); }
+
+.log-prefix { text-align: right; color: var(--muted); }
+.log-text   { word-break: break-word; }
+
+/* -- Input row ---------------------------------------------- */
+#input-row {
+  height: var(--input-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.prompt-symbol {
+  color: var(--success);
+  font-size: var(--fs);
+  line-height: var(--lh);
+  flex-shrink: 0;
+}
+
+#input-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+#cmd {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: var(--lh);
+  caret-color: var(--accent);
+  caret-shape: underscore;
+}
+#cmd::placeholder { color: var(--muted); opacity: 0.4; }
+
+/* -- Suggestions — positioned absolutely so layout doesn't shift ----- */
+#suggestions {
+  position: absolute;
+  top: 100%;
+  left: -1px; /* Align perfectly considering the 1px terminal border */
+  width: calc(100% + 2px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-top: none;
+  background: var(--bg);
+}
+#suggestions:empty { border: none; }
+
+.suggestion-item {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  gap: 0 0.4rem;
+  padding: 0.2rem 0.8rem;
+  font-size: var(--fs);
+  line-height: var(--lh);
+  color: var(--muted);
+  cursor: pointer;
+}
+.suggestion-item + .suggestion-item {
+  border-top: 1px solid var(--border);
+}
+.suggestion-item:hover,
+.suggestion-item.active {
+  color: var(--text);
+  background: var(--surface);
+}
+.sug-arrow { color: var(--info); }
+.sug-tag {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--warning);
+  opacity: 0.3;
+}
+
+/* -- Help overlay ------------------------------------------- */
+#help-overlay {
+  position: fixed;
+  inset: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+#help-overlay[hidden] { display: none; }
+
+#help-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1.6rem 2rem;
+  width: var(--w);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.help-section { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.help-label {
+  font-size: var(--fs);
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 1.4rem;
+  font-size: var(--fs);
+}
+.cmd-ex {
+  display: inline-block;
+  font-family: var(--font);                  /* already monospace, but explicit */
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  color: var(--text);
+  font-size: 0.82rem;                        /* slightly smaller than body */
+  line-height: 1.5;
+  white-space: nowrap;                       /* keep commands on one line */
+}
+
+.cmd-desc {
+  color: var(--muted);
+  align-self: start;
+}
+
+/* -- Config overlay ----------------------------------------- */
+#config-overlay {
+  position: fixed;
+  inset: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+#config-overlay[hidden] { display: none; }
+
+#config-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1.4rem 1.8rem;
+  width: min(720px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+#theme-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  padding: 0.25rem 0.5rem;
+  outline: none;
+  cursor: pointer;
+}
+#theme-select:focus {
+  border-color: var(--accent-dim);
+}
+
+#config-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: var(--fs);
+  cursor: pointer;
+}
+#config-close:hover { color: var(--text); }
+
+#alias-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-right: 10px;
+  max-height: 52vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-gutter: stable;
+}
+
+.alias-group-label {
+  font-size: var(--fs);
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  font-weight: 500;
+  text-transform: uppercase;
+  padding: 0.6rem 0 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.1rem;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.alias-row {
+  display: grid;
+  grid-template-columns: 6rem 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: var(--fs);
+  padding: 0.18rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.alias-row:last-child { border-bottom: none; }
+
+.alias-key { color: var(--special); }
+.alias-row.is-builtin .alias-key { color: var(--alternate); }
+.alias-url {
+  color: var(--muted);
+  opacity: 0.7;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+.alias-row.is-builtin .alias-url { opacity: 0.4; }
+
+.alias-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: var(--fs);
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+.alias-del:hover { color: var(--danger); }
+
+#alias-add-row {
+  display: grid;
+  grid-template-columns: 7rem auto 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+#alias-add-row input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  padding: 0.25rem 0.5rem;
+  outline: none;
+}
+#alias-add-row input:focus { border-color: var(--accent-dim); }
+
+.config-sep { color: var(--muted); font-size: var(--fs); }
+
+#alias-save {
+  background: var(--accent-dim);
+  border: none;
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: var(--fs);
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+#alias-save:hover { background: var(--accent); color: var(--bg); }
+
+.config-hint {
+  font-size: var(--fs);
+  color: var(--muted);
+  line-height: var(--lh);
+}
+.config-hint code { color: var(--accent); }
+
+/* -- Hint bar ----------------------------------------------- */
+#hint-bar {
+  position: fixed;
+  bottom: 1.2rem; /*1.2rem;*/
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--fs);
+  letter-spacing: 0.1em;
+  color: var(--text);
+  opacity: 0.2;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  transition: opacity 0.5s;
+}
+
+#hint-bar.hint-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#output-log {
+  position: relative;
+  overflow: hidden;   /* keeps canvas inside */
+}
+
+#matrix-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: var(--matrix-opacity);       /* adjust transparency */
+  z-index: 0;
+}
+
+/* Make log entries appear above the canvas */
+.log-entry {
+  position: relative;
+  z-index: 1;
+}
+
+/* -- Focus ring --------------------------------------------- */
+:focus-visible { outline: 1px solid var(--accent-dim); outline-offset: 2px; }
+
+/* -- Reduced motion ----------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

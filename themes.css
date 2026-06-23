@@ -1,0 +1,300 @@
+/* ===== Default Theme (Default Dark) ===== */
+:root,
+[data-theme="default-dark"] {
+    --base00: #181818;
+    --base01: #282828;
+    --base02: #383838;
+    --base03: #585858;
+    --base04: #b8b8b8;
+    --base05: #d8d8d8;
+    --base06: #e8e8e8;
+    --base07: #f8f8f8;
+    --base08: #ab4642;
+    --base09: #dc9656;
+    --base0A: #f7ca88;
+    --base0B: #a1b56c;
+    --base0C: #86c1b9;
+    --base0D: #7cafc2;
+    --base0E: #ba8baf;
+    --base0F: #a16946;
+}
+
+/* ===== Default Light ===== */
+[data-theme="default-light"] {
+    --base00: #f8f8f8;
+    --base01: #e8e8e8;
+    --base02: #d8d8d8;
+    --base03: #b8b8b8;
+    --base04: #585858;
+    --base05: #383838;
+    --base06: #282828;
+    --base07: #181818;
+    --base08: #ab4642;
+    --base09: #dc9656;
+    --base0A: #f7ca88;
+    --base0B: #a1b56c;
+    --base0C: #86c1b9;
+    --base0D: #7cafc2;
+    --base0E: #ba8baf;
+    --base0F: #a16946;
+}
+
+/* ===== Cupcake ===== */
+[data-theme="cupcake"] {
+    --base00: #fbf1f2;
+    --base01: #f2f1f4;
+    --base02: #d8d5dd;
+    --base03: #bfb9c6;
+    --base04: #a59daf;
+    --base05: #8b8198;
+    --base06: #72677E;
+    --base07: #585062;
+    --base08: #D57E85;
+    --base09: #EBB790;
+    --base0A: #DCB16C;
+    --base0B: #A3B367;
+    --base0C: #69A9A7;
+    --base0D: #7297B9;
+    --base0E: #BB99B4;
+    --base0F: #BAA58C;
+}
+
+/* ===== Dracula ===== */
+[data-theme="dracula"] {
+    --base00: #282a36;
+    --base01: #343746;
+    --base02: #44475a;
+    --base03: #6272a4;
+    --base04: #62d6e8;
+    --base05: #f8f8f2;
+    --base06: #e9f284;
+    --base07: #ffffff;
+    --base08: #ff5555;
+    --base09: #ffb86c;
+    --base0A: #f1fa8c;
+    --base0B: #50fa7b;
+    --base0C: #8be9fd;
+    --base0D: #80bfff;
+    --base0E: #ff79c6;
+    --base0F: #bd93f9;
+}
+
+/* ===== Eighties ===== */
+[data-theme="eighties"] {
+    --base00: #2d2d2d;
+    --base01: #393939;
+    --base02: #515151;
+    --base03: #747369;
+    --base04: #a09f93;
+    --base05: #d3d0c8;
+    --base06: #e8e6df;
+    --base07: #f2f0ec;
+    --base08: #f2777a;
+    --base09: #f99157;
+    --base0A: #ffcc66;
+    --base0B: #99cc99;
+    --base0C: #66cccc;
+    --base0D: #6699cc;
+    --base0E: #cc99cc;
+    --base0F: #d27b53;
+}
+
+/* ===== Mocha ===== */
+[data-theme="mocha"] {
+    --base00: #3B3228;
+    --base01: #534636;
+    --base02: #645240;
+    --base03: #7e705a;
+    --base04: #b8afad;
+    --base05: #d0c8c6;
+    --base06: #e9e1dd;
+    --base07: #f5eeeb;
+    --base08: #cb6077;
+    --base09: #d28b71;
+    --base0A: #f4bc87;
+    --base0B: #beb55b;
+    --base0C: #7bbda4;
+    --base0D: #8ab3b5;
+    --base0E: #a89bb9;
+    --base0F: #bb9584;
+}
+
+/* ===== Nebula ===== */
+[data-theme="nebula"] {
+    --base00: #22273b;
+    --base01: #2c3550;
+    --base02: #364264;
+    --base03: #4a5678;
+    --base04: #7b86a5;
+    --base05: #a4acc4;
+    --base06: #cbd3e1;
+    --base07: #e8ecf6;
+    --base08: #c1747a;
+    --base09: #d8a657;
+    --base0A: #e6d089;
+    --base0B: #7fc1a2;
+    --base0C: #5fb3b3;
+    --base0D: #7aa2f7;
+    --base0E: #bb9af7;
+    --base0F: #a7896c;
+}
+
+/* ===== Nord ===== */
+[data-theme="nord"] {
+    --base00: #2E3440;
+    --base01: #3B4252;
+    --base02: #434C5E;
+    --base03: #4C566A;
+    --base04: #D8DEE9;
+    --base05: #E5E9F0;
+    --base06: #ECEFF4;
+    --base07: #8FBCBB;
+    --base08: #BF616A;
+    --base09: #D08770;
+    --base0A: #EBCB8B;
+    --base0B: #A3BE8C;
+    --base0C: #88C0D0;
+    --base0D: #81A1C1;
+    --base0E: #B48EAD;
+    --base0F: #5E81AC;
+}
+
+/* ===== Ocean ===== */
+[data-theme="ocean"] {
+    --base00: #2b303b;
+    --base01: #343d46;
+    --base02: #4f5b66;
+    --base03: #65737e;
+    --base04: #a7adba;
+    --base05: #c0c5ce;
+    --base06: #dfe1e8;
+    --base07: #eff1f5;
+    --base08: #bf616a;
+    --base09: #d08770;
+    --base0A: #ebcb8b;
+    --base0B: #a3be8c;
+    --base0C: #96b5b4;
+    --base0D: #8fa1b3;
+    --base0E: #b48ead;
+    --base0F: #ab7967;
+}
+
+/* ===== Rosé Pine ===== */
+[data-theme="rose-pine"] {
+    --base00: #191724;
+    --base01: #1f1d2e;
+    --base02: #26233a;
+    --base03: #6e6a86;
+    --base04: #908caa;
+    --base05: #e0def4;
+    --base06: #f2e9ff;
+    --base07: #524f67;
+    --base08: #eb6f92;
+    --base09: #f6c177;
+    --base0A: #ebbcba;
+    --base0B: #31748f;
+    --base0C: #9ccfd8;
+    --base0D: #c4a7e7;
+    --base0E: #f6c177;
+    --base0F: #524f67;
+}
+
+/* ===== Rosé Pine Dawn ===== */
+[data-theme="rose-pine-dawn"] {
+    --base00: #faf4ed;
+    --base01: #fffaf3;
+    --base02: #f2e9de;
+    --base03: #9893a5;
+    --base04: #797593;
+    --base05: #575279;
+    --base06: #575279;
+    --base07: #cecacd;
+    --base08: #b4637a;
+    --base09: #ea9d34;
+    --base0A: #d7827e;
+    --base0B: #286983;
+    --base0C: #56949f;
+    --base0D: #907aa9;
+    --base0E: #ea9d34;
+    --base0F: #cecacd;
+}
+
+/* ===== Rosé Pine Moon ===== */
+[data-theme="rose-pine-moon"] {
+    --base00: #232136;
+    --base01: #2a273f;
+    --base02: #393552;
+    --base03: #6e6a86;
+    --base04: #908caa;
+    --base05: #e0def4;
+    --base06: #e0def4;
+    --base07: #56526e;
+    --base08: #eb6f92;
+    --base09: #f6c177;
+    --base0A: #ea9a97;
+    --base0B: #3e8fb0;
+    --base0C: #9ccfd8;
+    --base0D: #c4a7e7;
+    --base0E: #f6c177;
+    --base0F: #56526e;
+}
+
+/* ===== Sakura ===== */
+[data-theme="sakura"] {
+    --base00: #feedf3;
+    --base01: #f8e2e7;
+    --base02: #e0ccd1;
+    --base03: #755f64;
+    --base04: #665055;
+    --base05: #564448;
+    --base06: #42383a;
+    --base07: #33292b;
+    --base08: #df2d52;
+    --base09: #f6661e;
+    --base0A: #c29461;
+    --base0B: #2e916d;
+    --base0C: #1d8991;
+    --base0D: #006e93;
+    --base0E: #5e2180;
+    --base0F: #ba0d35;
+}
+
+/* ===== Twilight ===== */
+[data-theme="twilight"] {
+    --base00: #1e1e1e;
+    --base01: #323537;
+    --base02: #464b50;
+    --base03: #5f5a60;
+    --base04: #838184;
+    --base05: #a7a7a7;
+    --base06: #c3c3c3;
+    --base07: #ffffff;
+    --base08: #cf6a4c;
+    --base09: #cda869;
+    --base0A: #f9ee98;
+    --base0B: #8f9d6a;
+    --base0C: #afc4db;
+    --base0D: #7587a6;
+    --base0E: #9b859d;
+    --base0F: #9b703f;
+}
+
+/* ===== Windows 95 ===== */
+[data-theme="windows-95"] {
+    --base00: #000000;
+    --base01: #1c1c1c;
+    --base02: #383838;
+    --base03: #545454;
+    --base04: #7e7e7e;
+    --base05: #a8a8a8;
+    --base06: #d2d2d2;
+    --base07: #fcfcfc;
+    --base08: #fc5454;
+    --base09: #a85400;
+    --base0A: #fcfc54;
+    --base0B: #54fc54;
+    --base0C: #54fcfc;
+    --base0D: #5454fc;
+    --base0E: #fc54fc;
+    --base0F: #00a800;
+}

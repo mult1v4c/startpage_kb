@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>startpage</title>
+  <link rel="icon" type="image/gif" href="assets/favicon.gif?v=2">
+  <link rel="shortcut icon" type="image/gif" href="assets/favicon.gif?v=2">
+  <link rel="stylesheet" href="themes.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="page">
+    <div id="ambient">
+      <span id="clock"></span>
+      <span id="weather-display"></span>
+    </div>
+
+    <main id="terminal">
+      <div id="output-log">
+        <canvas id="matrix-canvas"></canvas>
+      </div>
+      <div id="input-row">
+        <span class="prompt-symbol">></span>
+        <div id="input-wrapper">
+          <input
+            type="text"
+            id="cmd"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-label="Command input"
+          />
+        </div>
+      </div>
+      <div id="suggestions"></div>
+    </main>
+  </div>
+
+<div id="help-overlay" hidden>
+  <div id="help-content">
+    <div class="help-section">
+      <span class="help-label">Navigate</span>
+      <div class="help-grid">
+        <span class="cmd-ex">yt</span><span class="cmd-desc">→ Go to YouTube</span>
+        <span class="cmd-ex">gh react</span><span class="cmd-desc">→ Search GitHub</span>
+        <span class="cmd-ex">lzd</span><span class="cmd-desc">→ Lazada (fuzzy matching works)</span>
+        <span class="cmd-ex">github.com</span><span class="cmd-desc">→ Direct domain (auto https://)</span>
+        <span class="cmd-ex">https://example.com</span><span class="cmd-desc">→ Full URL</span>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <span class="help-label">Search</span>
+      <div class="help-grid">
+        <span class="cmd-ex">yt lofi beats</span><span class="cmd-desc">→ YouTube search</span>
+        <span class="cmd-ex">! weather tokyo</span><span class="cmd-desc">→ Force Google search</span>
+        <span class="cmd-ex">anything</span><span class="cmd-desc">→ Falls back to Google search</span>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <span class="help-label">Utilities</span>
+      <div class="help-grid">
+        <span class="cmd-ex">= 2 + 2</span><span class="cmd-desc">→ Calculator (math.js)</span>
+        <span class="cmd-ex">sqrt(144) + pi</span><span class="cmd-desc">→ Math expression detected</span>
+        <span class="cmd-ex">time tokyo</span><span class="cmd-desc">→ World clock with timezone</span>
+        <span class="cmd-ex">weather manila</span><span class="cmd-desc">→ Terminal weather (wttr.in)</span>
+        <span class="cmd-ex">100 usd to php</span><span class="cmd-desc">→ Currency (Google search)</span>
+        <span class="cmd-ex">clear / cls</span><span class="cmd-desc">→ Clear output log</span>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <span class="help-label">Keys</span>
+      <div class="help-grid">
+        <span class="cmd-ex">Enter</span><span class="cmd-desc">Execute command / accept suggestion</span>
+        <span class="cmd-ex">Tab</span><span class="cmd-desc">Autocomplete first suggestion</span>
+        <span class="cmd-ex">Esc</span><span class="cmd-desc">Close suggestions → Clear input → Close overlay</span>
+        <span class="cmd-ex">↑ ↓</span><span class="cmd-desc">Cycle history / suggestions</span>
+        <span class="cmd-ex">Ctrl+K</span><span class="cmd-desc">Open alias manager</span>
+        <span class="cmd-ex">`</span><span class="cmd-desc">Refocus command input</span>
+        <span class="cmd-ex">?</span><span class="cmd-desc">Toggle this help</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <div id="config-overlay" hidden>
+    <div id="config-content">
+      <div class="config-header">
+        <span class="help-label">Settings</span>
+        <button id="config-close" aria-label="Close config">✕</button>
+      </div>
+
+    <!-- Theme selector -->
+    <div class="config-section">
+      <label for="theme-select" class="help-label">Theme</label>
+      <select id="theme-select"></select>
+    </div>
+
+      <div id="alias-list"></div>
+      <div id="alias-add-row">
+        <input type="text" id="alias-key" placeholder="alias" spellcheck="false" autocomplete="off" />
+        <span class="config-sep">→</span>
+        <input type="text" id="alias-url" placeholder="https://example.com/search?q=" spellcheck="false" autocomplete="off" />
+        <button id="alias-save">add</button>
+      </div>
+      <p class="config-hint">Use <code>%s</code> as the query placeholder. Leave URL plain for direct nav.</p>
+    </div>
+  </div>
+
+  <div id="hint-bar">[?] help &nbsp;&nbsp; [`] focus &nbsp;&nbsp; [^k] settings</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
