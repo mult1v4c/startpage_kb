@@ -9,6 +9,8 @@ Execute commands like a terminal – navigate, search, calculate, convert curren
 
 ## ✨ Features
 
+https://github.com/user-attachments/assets/b9a7c148-814e-4353-a4c9-b31da5b331dd
+
 - **Alias‑based navigation** – jump to any site with a short keyword (`yt`, `gh`, `gmail`…)
 - **Built‑in search shortcuts** – `yt lofi beats` searches YouTube, `gh react` searches GitHub, and many more
 - **Powerful calculator** – powered by [math.js](https://mathjs.org/); supports `= 2+2`, `sqrt(144)`, `sin(pi/2)`, etc.
