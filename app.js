@@ -199,7 +199,7 @@ const $configClose = document.getElementById('config-close');
 const $clock = document.getElementById('clock');
 const $weather = document.getElementById('weather-display');
 
-let editingRow = null;   // currently edited alias row, if any
+let editingRow = null; // currently edited alias row, if any
 
 /* -- Hint bar auto‑hide ------------------------------------- */
 const HINT_AUTO_HIDE_DELAY = 3000; // 5 seconds – change here
@@ -293,6 +293,8 @@ function escHtml(s) {
 }
 
 /* -- Fuzzy match – Sørensen–Dice coefficient --------------- */
+const bigramCache = new Map(); // Stores string bigrams
+
 function bigrams(str) {
     const s = str.toLowerCase();
     const set = new Set();
@@ -302,9 +304,20 @@ function bigrams(str) {
     return set;
 }
 
-function diceSimilarity(a, b) {
-    const aBig = bigrams(a);
-    const bBig = bigrams(b);
+// Helper to pull from cache or generate if new
+function getCachedBigrams(str) {
+    if (!bigramCache.has(str)) {
+        bigramCache.set(str, bigrams(str));
+    }
+    return bigramCache.get(str);
+}
+
+function diceSimilarity(inputStr, aliasKey) {
+    // Input changes constantly, calculate fresh
+    const aBig = bigrams(inputStr);
+    // Alias keys rarely change, pull from cache
+    const bBig = getCachedBigrams(aliasKey);
+
     let intersect = 0;
     for (const bg of aBig) {
         if (bBig.has(bg)) intersect++;
@@ -349,7 +362,9 @@ function tryCalc(expr) {
     }
 }
 
-/* Improved timezone using Intl.DateTimeFormat */
+/* Improved timezone using Intl.DateTimeFormat (Cached) */
+const tzFormatters = new Map(); // Store formatters to save CPU
+
 function getWorldTime(cityRaw) {
     const key = cityRaw.toLowerCase().replace(/\s+/g, '');
     const tz = CITY_TZ[key] || CITY_TZ[cityRaw.toLowerCase()];
@@ -357,18 +372,27 @@ function getWorldTime(cityRaw) {
 
     try {
         const now = new Date();
-        const formatter = new Intl.DateTimeFormat('en-GB', {
-            timeZone: tz,
-            weekday: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-            timeZoneName: 'shortOffset',
-        });
+
+        // If we haven't checked this timezone yet, create and store it
+        if (!tzFormatters.has(tz)) {
+            tzFormatters.set(tz, new Intl.DateTimeFormat('en-GB', {
+                timeZone: tz,
+                weekday: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+                timeZoneName: 'shortOffset',
+            }));
+        }
+
+        // Retrieve the cached formatter
+        const formatter = tzFormatters.get(tz);
         const parts = formatter.formatToParts(now);
+
         const timeStr = parts.filter(p => p.type !== 'timeZoneName').map(p => p.value).join('').replace(/,/g, '');
         const offset = parts.find(p => p.type === 'timeZoneName')?.value || '';
         const displayCity = cityRaw.replace(/\b\w/g, c => c.toUpperCase());
+
         return `${displayCity}: (${offset}) ${timeStr}`;
     } catch {
         return null;
@@ -412,16 +436,14 @@ function tryCalculator(input) {
     } = parseHeadTail(input);
     if (head !== '=' || !tail) return null;
     const result = tryCalc(tail);
-    return result !== null ?
-        {
-            type: 'local',
-            output: result
-        } :
-        {
-            type: 'local',
-            output: 'invalid math expression',
-            err: true
-        };
+    return result !== null ? {
+        type: 'local',
+        output: result
+    } : {
+        type: 'local',
+        output: 'invalid math expression',
+        err: true
+    };
 }
 
 function tryMathExpression(input) {
@@ -445,15 +467,13 @@ function tryTime(input) {
     } = parseHeadTail(input);
     if (head !== 'time' || !tail) return null;
     const t = getWorldTime(tail);
-    return t ?
-        {
-            type: 'local',
-            output: t
-        } :
-        {
-            type: 'redirect',
-            url: FALLBACK_SEARCH.replace('%s', encodeURIComponent(input))
-        };
+    return t ? {
+        type: 'local',
+        output: t
+    } : {
+        type: 'redirect',
+        url: FALLBACK_SEARCH.replace('%s', encodeURIComponent(input))
+    };
 }
 
 function tryWeather(input) {
@@ -683,10 +703,12 @@ async function execute(raw) {
             logCmd(input);
             logResult(`navigating ${action.fuzzy_hint}`);
             $cmd.value = '';
-            setTimeout(() => { window.location.href = action.url; }, 180);
+            setTimeout(() => {
+                window.location.href = action.url;
+            }, 180);
         } else {
             $cmd.value = '';
-            window.location.href = action.url;   // or location.replace(action.url)
+            window.location.href = action.url; // or location.replace(action.url)
         }
     }
 }
@@ -788,11 +810,14 @@ function buildSuggestions(val) {
 
 function renderSuggestions() {
     $suggestions.innerHTML = '';
+    const fragment = document.createDocumentFragment(); // Create the fragment
+
     current_sugs.forEach((s, i) => {
         const el = document.createElement('div');
         el.className = 'suggestion-item' + (i === sug_idx ? ' active' : '');
         el.innerHTML =
             `<span class="sug-arrow">→</span><span class="sug-label">${escHtml(s.label)}</span><span class="sug-tag">${s.tag}</span>`;
+
         el.addEventListener('mousedown', e => {
             e.preventDefault();
         });
@@ -805,8 +830,10 @@ function renderSuggestions() {
                 $cmd.focus();
             }
         });
-        $suggestions.appendChild(el);
+        fragment.appendChild(el); // Append to memory, not the DOM
     });
+
+    $suggestions.appendChild(fragment); // Push to DOM all at once
 }
 
 function clearSuggestions() {
@@ -855,6 +882,7 @@ $cmd.addEventListener('keydown', e => {
         }
         case 'Escape': {
             e.preventDefault();
+            e.stopPropagation();
 
             if (current_sugs.length > 0) {
                 clearSuggestions();
@@ -906,6 +934,19 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         cancelEdit(editingRow);
         return;
+    }
+
+    if (e.key === 'Escape') {
+        if (!$config.hidden) {
+            e.preventDefault();
+            closeConfig();
+            return;
+        }
+        if (!$help.hidden) {
+            e.preventDefault();
+            toggleHelp();
+            return;
+        }
     }
 
     if (e.ctrlKey && e.key === 'k') {
@@ -967,162 +1008,172 @@ $config.addEventListener('click', e => {
 });
 
 function makeAliasRow(key, val, isBuiltin) {
-  const url = typeof val === 'string' ? val : (val.url || val.nav || '');
-  const displayUrl = url;
+    const url = typeof val === 'string' ? val : (val.url || val.nav || '');
+    const displayUrl = url;
 
-  const row = document.createElement('div');
-  row.className = 'alias-row' + (isBuiltin ? ' is-builtin' : '');
+    const row = document.createElement('div');
+    row.className = 'alias-row' + (isBuiltin ? ' is-builtin' : '');
 
-  if (isBuiltin) {
-    row.innerHTML = `
+    if (isBuiltin) {
+        row.innerHTML = `
       <span class="alias-key">${escHtml(key)}</span>
       <span class="alias-url" title="${escHtml(url)}">${escHtml(displayUrl)}</span>
     `;
-  } else {
-    row.innerHTML = `
+    } else {
+        row.innerHTML = `
       <span class="alias-key">${escHtml(key)}</span>
       <span class="alias-url" title="${escHtml(url)}">${escHtml(url)}</span>
       <button class="alias-del" data-key="${escHtml(key)}" aria-label="Delete alias ${escHtml(key)}">✕</button>
     `;
 
-    // Delete button
-    row.querySelector('.alias-del').addEventListener('click', (e) => {
-      e.stopPropagation();
-      delete user_aliases[key];
-      saveAliases();
-      renderAliasList();
-    });
+        // Delete button
+        row.querySelector('.alias-del').addEventListener('click', (e) => {
+            e.stopPropagation();
+            delete user_aliases[key];
+            saveAliases();
+            renderAliasList();
+        });
 
-    // Double‑click on key → focus key input
-    row.querySelector('.alias-key').addEventListener('dblclick', () => {
-      enterEditMode(row, key, 'key');
-    });
+        // Double‑click on key → focus key input
+        row.querySelector('.alias-key').addEventListener('dblclick', () => {
+            enterEditMode(row, key, 'key');
+        });
 
-    // Double‑click on url → focus url input
-    row.querySelector('.alias-url').addEventListener('dblclick', () => {
-      enterEditMode(row, key, 'url');
-    });
-  }
+        // Double‑click on url → focus url input
+        row.querySelector('.alias-url').addEventListener('dblclick', () => {
+            enterEditMode(row, key, 'url');
+        });
+    }
 
-  return row;
+    return row;
 }
 
 function enterEditMode(row, key, focusTarget = 'key') {
-  if (row.classList.contains('editing')) return;
-  if (editingRow) cancelEdit(editingRow);
+    if (row.classList.contains('editing')) return;
+    if (editingRow) cancelEdit(editingRow);
 
-  const keySpan = row.querySelector('.alias-key');
-  const urlSpan = row.querySelector('.alias-url');
-  const delBtn = row.querySelector('.alias-del');
+    const keySpan = row.querySelector('.alias-key');
+    const urlSpan = row.querySelector('.alias-url');
+    const delBtn = row.querySelector('.alias-del');
 
-  // Store original elements for later restoration
-  row._keySpan = keySpan;
-  row._urlSpan = urlSpan;
-  row._delBtn = delBtn || null;
+    // Store original elements for later restoration
+    row._keySpan = keySpan;
+    row._urlSpan = urlSpan;
+    row._delBtn = delBtn || null;
 
-  const currentAlias = user_aliases[key] || {};
-  const currentUrl = currentAlias.url || currentAlias.nav || '';
+    const currentAlias = user_aliases[key] || {};
+    const currentUrl = currentAlias.url || currentAlias.nav || '';
 
-  // Hide spans and delete button
-  keySpan.style.display = 'none';
-  urlSpan.style.display = 'none';
-  if (delBtn) delBtn.style.display = 'none';
+    // Hide spans and delete button
+    keySpan.style.display = 'none';
+    urlSpan.style.display = 'none';
+    if (delBtn) delBtn.style.display = 'none';
 
-  // Create key input and insert after keySpan
-  const keyInput = document.createElement('input');
-  keyInput.type = 'text';
-  keyInput.className = 'alias-edit-input alias-edit-key';
-  keyInput.value = key;
-  keySpan.insertAdjacentElement('afterend', keyInput);
+    // Create key input and insert after keySpan
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.className = 'alias-edit-input alias-edit-key';
+    keyInput.value = key;
+    keySpan.insertAdjacentElement('afterend', keyInput);
 
-  // Create url input and insert after urlSpan
-  const urlInput = document.createElement('input');
-  urlInput.type = 'text';
-  urlInput.className = 'alias-edit-input alias-edit-url';
-  urlInput.value = currentUrl;
-  urlSpan.insertAdjacentElement('afterend', urlInput);
+    // Create url input and insert after urlSpan
+    const urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.className = 'alias-edit-input alias-edit-url';
+    urlInput.value = currentUrl;
+    urlSpan.insertAdjacentElement('afterend', urlInput);
 
-  // Store input references for cleanup
-  row._keyInput = keyInput;
-  row._urlInput = urlInput;
+    // Store input references for cleanup
+    row._keyInput = keyInput;
+    row._urlInput = urlInput;
 
-  row.classList.add('editing');
-  editingRow = row;
+    row.classList.add('editing');
+    editingRow = row;
 
-  // Focus the targeted input
-  if (focusTarget === 'url') {
-    urlInput.focus();
-    urlInput.setSelectionRange(0, urlInput.value.length);
-  } else {
-    keyInput.focus();
-    keyInput.select();
-  }
-
-  // Save logic
-  const save = () => {
-    const newKey = keyInput.value.trim().toLowerCase();
-    const newUrl = urlInput.value.trim();
-    if (!newKey || !newUrl) {
-      cancelEdit(row);
-      return;
+    // Focus the targeted input
+    if (focusTarget === 'url') {
+        urlInput.focus();
+        urlInput.setSelectionRange(0, urlInput.value.length);
+    } else {
+        keyInput.focus();
+        keyInput.select();
     }
-    delete user_aliases[key];
-    user_aliases[newKey] = {
-      url: newUrl,
-      search: newUrl.includes('%s'),
-      nav: newUrl.includes('%s') ? newUrl.split('%s')[0].replace(/[\?\&][^?&=]+=?$/, '') : newUrl
+
+    // Save logic
+    const save = () => {
+        const newKey = keyInput.value.trim().toLowerCase();
+        const newUrl = urlInput.value.trim();
+        if (!newKey || !newUrl) {
+            cancelEdit(row);
+            return;
+        }
+        delete user_aliases[key];
+        user_aliases[newKey] = {
+            url: newUrl,
+            search: newUrl.includes('%s'),
+            nav: newUrl.includes('%s') ? newUrl.split('%s')[0].replace(/[\?\&][^?&=]+=?$/, '') : newUrl
+        };
+        saveAliases();
+        // Re-render the whole list – the editing row will be destroyed and rebuilt
+        renderAliasList();
     };
-    saveAliases();
-    // Re-render the whole list – the editing row will be destroyed and rebuilt
-    renderAliasList();
-  };
 
-  // Cancel logic
-  const cancel = () => cancelEdit(row);
+    // Cancel logic
+    const cancel = () => cancelEdit(row);
 
-  keyInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); save(); }
-    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
-  urlInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); save(); }
-    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
+    keyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            save();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+        }
+    });
+    urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            save();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+        }
+    });
 
-  // Global click‑outside listener
-  setTimeout(() => document.addEventListener('click', handleOutsideClick), 0);
+    // Global click‑outside listener
+    setTimeout(() => document.addEventListener('click', handleOutsideClick), 0);
 }
 
 function cancelEdit(row) {
-  if (!row || !row.classList.contains('editing')) return;
+    if (!row || !row.classList.contains('editing')) return;
 
-  // Remove all input fields in this row
-  row.querySelectorAll('.alias-edit-input').forEach(el => el.remove());
+    // Remove all input fields in this row
+    row.querySelectorAll('.alias-edit-input').forEach(el => el.remove());
 
-  // Show original spans and delete button
-  if (row._keySpan) row._keySpan.style.display = '';
-  if (row._urlSpan) row._urlSpan.style.display = '';
-  if (row._delBtn) row._delBtn.style.display = '';
+    // Show original spans and delete button
+    if (row._keySpan) row._keySpan.style.display = '';
+    if (row._urlSpan) row._urlSpan.style.display = '';
+    if (row._delBtn) row._delBtn.style.display = '';
 
-  row.classList.remove('editing');
+    row.classList.remove('editing');
 
-  // Clean up stored references
-  delete row._keySpan;
-  delete row._urlSpan;
-  delete row._delBtn;
-  delete row._keyInput;
-  delete row._urlInput;
+    // Clean up stored references
+    delete row._keySpan;
+    delete row._urlSpan;
+    delete row._delBtn;
+    delete row._keyInput;
+    delete row._urlInput;
 
-  editingRow = null;
-  document.removeEventListener('click', handleOutsideClick);
+    editingRow = null;
+    document.removeEventListener('click', handleOutsideClick);
 }
 
 function handleOutsideClick(e) {
-  if (!editingRow) return;
-  // If click is inside the editing row, ignore
-  if (editingRow.contains(e.target)) return;
-  // Otherwise, cancel
-  cancelEdit(editingRow);
+    if (!editingRow) return;
+    // If click is inside the editing row, ignore
+    if (editingRow.contains(e.target)) return;
+    // Otherwise, cancel
+    cancelEdit(editingRow);
 }
 
 /* -- Theme Management --------------------------------------- */
@@ -1189,8 +1240,7 @@ function loadTheme() {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     // Use the dynamically‑populated dropdown to check validity
     const validThemes = $themeSelect ?
-        Array.from($themeSelect.options).map(opt => opt.value) :
-        [];
+        Array.from($themeSelect.options).map(opt => opt.value) : [];
     if (saved && validThemes.includes(saved)) {
         applyTheme(saved);
     } else {
@@ -1210,32 +1260,35 @@ loadTheme();
 
 function renderAliasList() {
     $aliasList.innerHTML = '';
+    const fragment = document.createDocumentFragment();
 
     const customKeys = Object.keys(user_aliases);
     const customLabel = document.createElement('div');
     customLabel.className = 'alias-group-label';
     customLabel.textContent = 'CUSTOM';
-    $aliasList.appendChild(customLabel);
+    fragment.appendChild(customLabel);
 
     if (customKeys.length === 0) {
         const empty = document.createElement('div');
         empty.style.cssText = 'font-size:.7rem;color:var(--muted);padding:.35rem 0 .5rem';
         empty.textContent = 'No custom aliases yet — add one below.';
-        $aliasList.appendChild(empty);
+        fragment.appendChild(empty);
     } else {
         for (const key of customKeys) {
-            $aliasList.appendChild(makeAliasRow(key, user_aliases[key], false));
+            fragment.appendChild(makeAliasRow(key, user_aliases[key], false));
         }
     }
 
     const builtinLabel = document.createElement('div');
     builtinLabel.className = 'alias-group-label';
     builtinLabel.textContent = 'BUILT-IN';
-    $aliasList.appendChild(builtinLabel);
+    fragment.appendChild(builtinLabel);
 
     for (const [key, val] of Object.entries(DEFAULT_ALIASES)) {
-        $aliasList.appendChild(makeAliasRow(key, val, true));
+        fragment.appendChild(makeAliasRow(key, val, true));
     }
+
+    $aliasList.appendChild(fragment); // Push to DOM all at once
 }
 
 $aliasSave.addEventListener('click', saveAlias);
@@ -1299,15 +1352,17 @@ function saveAlias() {
             text
         }));
     } catch {
-        /* silent fail */ }
+        /* silent fail */
+    }
 })();
 
 /* -- Matrix Rain (high‑DPI, zoom‑proof) -------------------- */
-let matrixInterval = null;
+let matrixAnimationId = null;
+let lastDrawTime = 0;
+const MATRIX_FPS = 50;
 let matrixCanvas = null;
 
 function startMatrix() {
-    // Create canvas if it doesn't exist
     if (!document.getElementById('matrix-canvas')) {
         const canvas = document.createElement('canvas');
         canvas.id = 'matrix-canvas';
@@ -1315,15 +1370,13 @@ function startMatrix() {
     }
 
     matrixCanvas = document.getElementById('matrix-canvas');
-    if (!matrixCanvas || matrixInterval) return; // already running
+    if (!matrixCanvas || matrixAnimationId) return;
 
     const ctx = matrixCanvas.getContext('2d');
     const chars =
         'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-    let fontSize = 12; // logical font size (CSS pixels)
+    let fontSize = 12;
     const colWidth = fontSize * 0.8;
-
     let cols = 0,
         rows = 0;
     let drops = [];
@@ -1339,16 +1392,13 @@ function startMatrix() {
     }
 
     function resize() {
+        // [Keep your existing resize logic here - it is already well written]
         if (!matrixCanvas || !matrixCanvas.isConnected) return;
 
         const rect = matrixCanvas.getBoundingClientRect();
         ratio = window.devicePixelRatio || 1;
-
-        // Set actual canvas buffer size (high-DPI)
         matrixCanvas.width = rect.width * ratio;
         matrixCanvas.height = rect.height * ratio;
-
-        // Scale the context so we draw at the logical size
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
         const logicalW = rect.width;
@@ -1372,7 +1422,6 @@ function startMatrix() {
                 }
             }
             grid = newGrid;
-
             if (drops.length < newCols) {
                 for (let i = drops.length; i < newCols; i++) {
                     drops[i] = 0;
@@ -1383,13 +1432,18 @@ function startMatrix() {
         }
     }
 
-    function draw() {
-        const colors = getThemeColors();
+    function draw(timestamp) {
+        // Throttle the frame rate to match your original 50ms interval
+        if (timestamp - lastDrawTime < MATRIX_FPS) {
+            matrixAnimationId = requestAnimationFrame(draw);
+            return;
+        }
+        lastDrawTime = timestamp;
 
+        const colors = getThemeColors();
         ctx.globalAlpha = 1.0;
         ctx.fillStyle = colors.bg;
-        ctx.fillRect(0, 0, matrixCanvas.width / ratio, matrixCanvas.height / ratio); // logical coords
-
+        ctx.fillRect(0, 0, matrixCanvas.width / ratio, matrixCanvas.height / ratio);
         ctx.fillStyle = colors.fg;
         const fontFamily = getComputedStyle(document.body).fontFamily;
         ctx.font = `${fontSize}px ${fontFamily}`;
@@ -1399,12 +1453,8 @@ function startMatrix() {
                 grid[i][drops[i]].alpha = 1.0;
                 grid[i][drops[i]].char = chars.charAt(Math.floor(Math.random() * chars.length));
             }
-
             drops[i]++;
-
-            if (drops[i] > rows && Math.random() > 0.95) {
-                drops[i] = 0;
-            }
+            if (drops[i] > rows && Math.random() > 0.95) drops[i] = 0;
 
             for (let j = 0; j < rows; j++) {
                 if (grid[i][j].alpha > 0.01) {
@@ -1417,21 +1467,21 @@ function startMatrix() {
                 }
             }
         }
+        matrixAnimationId = requestAnimationFrame(draw);
     }
 
     resize();
-    matrixInterval = setInterval(draw, 50);
+    matrixAnimationId = requestAnimationFrame(draw); // Kick off the loop
 
     const observer = new ResizeObserver(resize);
     observer.observe(matrixCanvas);
-
     matrixCanvas.style.display = 'block';
 }
 
 function stopMatrix() {
-    if (matrixInterval) {
-        clearInterval(matrixInterval);
-        matrixInterval = null;
+    if (matrixAnimationId) {
+        cancelAnimationFrame(matrixAnimationId);
+        matrixAnimationId = null;
     }
     if (matrixCanvas) {
         const ctx = matrixCanvas.getContext('2d');
