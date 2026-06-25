@@ -364,6 +364,21 @@ html, body {
 }
 .alias-del:hover { color: var(--danger); }
 
+.alias-edit-input {
+  background: var(--bg);
+  border: 1px solid var(--accent-dim);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  padding: 0.15rem 0.3rem;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.alias-edit-input:focus {
+  border-color: var(--accent);
+}
+
 #alias-add-row {
   display: grid;
   grid-template-columns: 7rem auto 1fr auto;

@@ -199,6 +199,8 @@ const $configClose = document.getElementById('config-close');
 const $clock = document.getElementById('clock');
 const $weather = document.getElementById('weather-display');
 
+let editingRow = null;   // currently edited alias row, if any
+
 /* -- Hint bar auto‑hide ------------------------------------- */
 const HINT_AUTO_HIDE_DELAY = 3000; // 5 seconds – change here
 const $hintBar = document.getElementById('hint-bar');
@@ -680,11 +682,12 @@ async function execute(raw) {
         if (action.fuzzy_hint) {
             logCmd(input);
             logResult(`navigating ${action.fuzzy_hint}`);
+            $cmd.value = '';
+            setTimeout(() => { window.location.href = action.url; }, 180);
+        } else {
+            $cmd.value = '';
+            window.location.href = action.url;   // or location.replace(action.url)
         }
-        $cmd.value = '';
-        setTimeout(() => {
-            window.location.href = action.url;
-        }, action.fuzzy_hint ? 180 : 0);
     }
 }
 
@@ -897,6 +900,14 @@ $cmd.addEventListener('keydown', e => {
 
 /* -- Global key bindings --------------------------------------- */
 document.addEventListener('keydown', e => {
+
+    // Cancel alias editing on Escape (global)
+    if (e.key === 'Escape' && editingRow) {
+        e.preventDefault();
+        cancelEdit(editingRow);
+        return;
+    }
+
     if (e.ctrlKey && e.key === 'k') {
         e.preventDefault();
         if (!$help.hidden) toggleHelp();
@@ -956,28 +967,162 @@ $config.addEventListener('click', e => {
 });
 
 function makeAliasRow(key, val, isBuiltin) {
-    const url = typeof val === 'string' ? val : (val.url || val.nav || '');
-    const displayUrl = url;
-    const row = document.createElement('div');
-    row.className = 'alias-row' + (isBuiltin ? ' is-builtin' : '');
-    if (isBuiltin) {
-        row.innerHTML = `
+  const url = typeof val === 'string' ? val : (val.url || val.nav || '');
+  const displayUrl = url;
+
+  const row = document.createElement('div');
+  row.className = 'alias-row' + (isBuiltin ? ' is-builtin' : '');
+
+  if (isBuiltin) {
+    row.innerHTML = `
       <span class="alias-key">${escHtml(key)}</span>
       <span class="alias-url" title="${escHtml(url)}">${escHtml(displayUrl)}</span>
     `;
-    } else {
-        row.innerHTML = `
+  } else {
+    row.innerHTML = `
       <span class="alias-key">${escHtml(key)}</span>
       <span class="alias-url" title="${escHtml(url)}">${escHtml(url)}</span>
       <button class="alias-del" data-key="${escHtml(key)}" aria-label="Delete alias ${escHtml(key)}">✕</button>
     `;
-        row.querySelector('.alias-del').addEventListener('click', () => {
-            delete user_aliases[key];
-            saveAliases();
-            renderAliasList();
-        });
+
+    // Delete button
+    row.querySelector('.alias-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      delete user_aliases[key];
+      saveAliases();
+      renderAliasList();
+    });
+
+    // Double‑click on key → focus key input
+    row.querySelector('.alias-key').addEventListener('dblclick', () => {
+      enterEditMode(row, key, 'key');
+    });
+
+    // Double‑click on url → focus url input
+    row.querySelector('.alias-url').addEventListener('dblclick', () => {
+      enterEditMode(row, key, 'url');
+    });
+  }
+
+  return row;
+}
+
+function enterEditMode(row, key, focusTarget = 'key') {
+  if (row.classList.contains('editing')) return;
+  if (editingRow) cancelEdit(editingRow);
+
+  const keySpan = row.querySelector('.alias-key');
+  const urlSpan = row.querySelector('.alias-url');
+  const delBtn = row.querySelector('.alias-del');
+
+  // Store original elements for later restoration
+  row._keySpan = keySpan;
+  row._urlSpan = urlSpan;
+  row._delBtn = delBtn || null;
+
+  const currentAlias = user_aliases[key] || {};
+  const currentUrl = currentAlias.url || currentAlias.nav || '';
+
+  // Hide spans and delete button
+  keySpan.style.display = 'none';
+  urlSpan.style.display = 'none';
+  if (delBtn) delBtn.style.display = 'none';
+
+  // Create key input and insert after keySpan
+  const keyInput = document.createElement('input');
+  keyInput.type = 'text';
+  keyInput.className = 'alias-edit-input alias-edit-key';
+  keyInput.value = key;
+  keySpan.insertAdjacentElement('afterend', keyInput);
+
+  // Create url input and insert after urlSpan
+  const urlInput = document.createElement('input');
+  urlInput.type = 'text';
+  urlInput.className = 'alias-edit-input alias-edit-url';
+  urlInput.value = currentUrl;
+  urlSpan.insertAdjacentElement('afterend', urlInput);
+
+  // Store input references for cleanup
+  row._keyInput = keyInput;
+  row._urlInput = urlInput;
+
+  row.classList.add('editing');
+  editingRow = row;
+
+  // Focus the targeted input
+  if (focusTarget === 'url') {
+    urlInput.focus();
+    urlInput.setSelectionRange(0, urlInput.value.length);
+  } else {
+    keyInput.focus();
+    keyInput.select();
+  }
+
+  // Save logic
+  const save = () => {
+    const newKey = keyInput.value.trim().toLowerCase();
+    const newUrl = urlInput.value.trim();
+    if (!newKey || !newUrl) {
+      cancelEdit(row);
+      return;
     }
-    return row;
+    delete user_aliases[key];
+    user_aliases[newKey] = {
+      url: newUrl,
+      search: newUrl.includes('%s'),
+      nav: newUrl.includes('%s') ? newUrl.split('%s')[0].replace(/[\?\&][^?&=]+=?$/, '') : newUrl
+    };
+    saveAliases();
+    // Re-render the whole list – the editing row will be destroyed and rebuilt
+    renderAliasList();
+  };
+
+  // Cancel logic
+  const cancel = () => cancelEdit(row);
+
+  keyInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+
+  // Global click‑outside listener
+  setTimeout(() => document.addEventListener('click', handleOutsideClick), 0);
+}
+
+function cancelEdit(row) {
+  if (!row || !row.classList.contains('editing')) return;
+
+  // Remove all input fields in this row
+  row.querySelectorAll('.alias-edit-input').forEach(el => el.remove());
+
+  // Show original spans and delete button
+  if (row._keySpan) row._keySpan.style.display = '';
+  if (row._urlSpan) row._urlSpan.style.display = '';
+  if (row._delBtn) row._delBtn.style.display = '';
+
+  row.classList.remove('editing');
+
+  // Clean up stored references
+  delete row._keySpan;
+  delete row._urlSpan;
+  delete row._delBtn;
+  delete row._keyInput;
+  delete row._urlInput;
+
+  editingRow = null;
+  document.removeEventListener('click', handleOutsideClick);
+}
+
+function handleOutsideClick(e) {
+  if (!editingRow) return;
+  // If click is inside the editing row, ignore
+  if (editingRow.contains(e.target)) return;
+  // Otherwise, cancel
+  cancelEdit(editingRow);
 }
 
 /* -- Theme Management --------------------------------------- */
