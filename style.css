@@ -89,13 +89,22 @@ html, body {
   height: var(--history-h);
   flex-shrink: 0;
   padding: 0.8rem; /* CHANGED to uniform padding */
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;             /* scrollbar appears only when entries overflow */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;   /* entries stack from bottom up */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%, black 100%);
   mask-image:         linear-gradient(to bottom, transparent 0%, black 30%, black 100%);
 }
+/* Entries stack from the bottom up (margin-top:auto instead of justify-content:flex-end,
+   which would make the top of overflowing content unreachable by scrolling) */
+#output-log > .log-entry:first-of-type { margin-top: auto; }
+#output-log.scrolled-up { -webkit-mask-image: none; mask-image: none; }
+#output-log::-webkit-scrollbar { width: 6px; }
+#output-log::-webkit-scrollbar-thumb { background: var(--border); }
+#output-log::-webkit-scrollbar-track { background: transparent; }
 
 .log-entry {
   display: grid;
@@ -456,8 +465,7 @@ html, body {
 }
 
 #output-log {
-  position: relative;
-  overflow: hidden;   /* keeps canvas inside */
+  position: relative; /* anchors the canvas; overflow is set above */
 }
 
 #matrix-canvas {

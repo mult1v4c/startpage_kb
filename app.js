@@ -311,10 +311,18 @@ function logEntry(prefix, text, type = 'result') {
     row.className = `log-entry ${type}`;
     row.innerHTML = `<span class="log-prefix">${escHtml(prefix)}</span><span class="log-text">${escHtml(text)}</span>`;
     $output.appendChild(row);
-    while ($output.children.length > MAX_HISTORY_ROWS) {
-        $output.removeChild($output.firstChild);
-    }
+    const entries = $output.querySelectorAll('.log-entry');
+    for (let i = 0; i < entries.length - MAX_HISTORY_ROWS; i++) entries[i].remove();
+    $output.scrollTop = $output.scrollHeight; // keep the newest entry in view
+    updateLogFade();
 }
+
+/* Fade the top of the log only while it's scrolled to the bottom, so scrolled-up text stays readable */
+function updateLogFade() {
+    const atBottom = $output.scrollTop + $output.clientHeight >= $output.scrollHeight - 2;
+    $output.classList.toggle('scrolled-up', !atBottom);
+}
+$output.addEventListener('scroll', updateLogFade, { passive: true });
 
 function logCmd(text) {
     logEntry('›', text, 'cmd-echo');
@@ -752,8 +760,11 @@ async function execute(raw, newTab = false) {
         const weatherUrl = `https://wttr.in/${encodeURIComponent(action.city)}?format=%l:+%C+%t+%w`;
         fetch(weatherUrl)
             .then(r => r.ok ? r.text() : Promise.reject())
-            .then(text => {
-                const plaintext = text.trim();
+            .then(body => {
+                // Without a city wttr.in may answer with a full HTML page – keep only its text
+                const plaintext = /^\s*</.test(body) ?
+                    new DOMParser().parseFromString(body, 'text/html').body.textContent.trim() :
+                    body.trim();
                 logResult(plaintext || 'No data found.');
                 console.log(`[Startpage] Weather Fetch Result: ${plaintext}`);
             })
