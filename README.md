@@ -21,7 +21,10 @@ https://github.com/user-attachments/assets/b9a7c148-814e-4353-a4c9-b31da5b331dd
 - **Domain auto‑detection** – typing `github.com` or `mail.google.com` navigates directly
 - **Matrix rain** – animated background (stops when results appear, restarts on `clear`)
 - **Theme engine** – 14+ base16 themes (Dracula, Nord, Rosé Pine, Sakura…) switchable from the config panel
-- **Custom aliases** – add your own via the `Ctrl+K` overlay
+- **Custom aliases** – add your own via the `Ctrl+K` overlay, and export/import them as JSON for backup
+- **Learns your habits** – aliases you use most rank first in suggestions and fuzzy matches
+- **Open in new tab** – `Ctrl+Enter` (or Ctrl+click a suggestion)
+- **Dev-friendly** – `localhost:3000` or an IP address opens over http
 - **Full keyboard control** – see the shortcuts below
 
 ---
@@ -36,7 +39,7 @@ That’s it! No build step, no server required.
 
 ### Dependencies
 
-- [math.js](https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js) (CDN, loaded in the HTML)
+- [math.js](https://mathjs.org/) 11.8.0 – bundled in `assets/math.min.js` and loaded only when you type something math-like (CDN fallback)
 - The currency converter uses the free [open.er-api.com](https://open.er-api.com) service (no key).
 - Weather data from [wttr.in](https://wttr.in).
 
@@ -49,6 +52,7 @@ Everything else is vanilla JavaScript, CSS, and HTML.
 | Key       | Action |
 |-----------|--------|
 | `Enter`   | Execute command / accept highlighted suggestion |
+| `Ctrl+Enter` | Same, but open in a new tab |
 | `Tab`     | Autocomplete first suggestion |
 | `↑` / `↓` | Cycle through history or suggestions |
 | `Esc`     | Close suggestions → Clear input → Close overlays |
@@ -72,6 +76,7 @@ Everything else is vanilla JavaScript, CSS, and HTML.
 | `maps` | Google Maps (or `maps tokyo` to search) |
 | `! funny cats` | Force a Google search (bypasses aliases) |
 | `github.com` | Navigate directly (auto‑https) |
+| `localhost:5173` | Dev server (http) |
 
 ### Utilities
 
@@ -79,8 +84,9 @@ Everything else is vanilla JavaScript, CSS, and HTML.
 |-------|--------|
 | `= 2+2` | Calculator (`4`) |
 | `sqrt(16) + pi` | Math expression (`7.14159265359`) |
-| `time london` | World clock with offset |
-| `weather tokyo` | Current weather via wttr.in |
+| `5 km to mi` | Unit conversion (math.js) |
+| `time london` | World clock with offset (`time` alone = local) |
+| `weather tokyo` | Current weather via wttr.in (`weather` alone = your location) |
 | `50 usd to eur` | Live currency conversion |
 | `clear` or `cls` | Clear output log (matrix rain resumes) |
 
@@ -116,8 +122,8 @@ Your choice is saved automatically.
 - **Add aliases**: press `Ctrl+K`, type a keyword and a URL (use `%s` for search).
 - **Change theme**: select one from the dropdown in the config panel.
 - **Adjust history length**: change `MAX_HISTORY_ROWS` in `app.js`.
-- **Matrix rain opacity**: modify `--matrix-opacity` in `styles.css`.
-- **Font**: replace the `@import` URL in `styles.css` with your favourite monospace font.
+- **Matrix rain opacity**: modify `--matrix-opacity` in `style.css`.
+- **Font**: replace the Google Fonts `<link>` in `index.html` (and `--font` in `style.css`) with your favourite monospace font.
 
 ---
 

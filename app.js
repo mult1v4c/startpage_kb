@@ -7,6 +7,7 @@
 /* -- Constants ---------------------------------------------- */
 const STORAGE_HISTORY = 'skb_history';
 const STORAGE_ALIASES = 'skb_aliases';
+const STORAGE_ALIAS_USES = 'skb_alias_uses';
 const WEATHER_CACHE_KEY = 'skb_weather';
 const WEATHER_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
@@ -172,14 +173,33 @@ const CITY_TZ = {
 };
 
 /* -- State -------------------------------------------------- */
-let history_list = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || '[]');
-let user_aliases = JSON.parse(localStorage.getItem(STORAGE_ALIASES) || '{}');
+/* Read JSON from localStorage without letting a corrupted value break the page */
+function loadJSON(key, fallback) {
+    try {
+        const v = JSON.parse(localStorage.getItem(key));
+        return v ?? fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+let history_list = loadJSON(STORAGE_HISTORY, []);
+if (!Array.isArray(history_list)) history_list = [];
+let user_aliases = loadJSON(STORAGE_ALIASES, {});
+if (typeof user_aliases !== 'object' || Array.isArray(user_aliases)) user_aliases = {};
+// Older/hand-edited entries may be plain URL strings – normalise them
+for (const [k, v] of Object.entries(user_aliases)) {
+    if (typeof v === 'string') user_aliases[k] = makeAliasEntry(v);
+}
+let alias_uses = loadJSON(STORAGE_ALIAS_USES, {}); // alias key → times used
 let hist_idx = -1;
 let sug_idx = -1;
 let current_sugs = [];
 let debounceTimer = null;
+let matrixStyle = null; // cached theme colours/font for the matrix rain (cleared on theme change)
 
-const getAliases = () => ({
+let aliasCache = null; // merged built-in + custom aliases, rebuilt after saveAliases()
+const getAliases = () => aliasCache || (aliasCache = {
     ...DEFAULT_ALIASES,
     ...user_aliases
 });
@@ -202,7 +222,7 @@ const $weather = document.getElementById('weather-display');
 let editingRow = null; // currently edited alias row, if any
 
 /* -- Hint bar auto‑hide ------------------------------------- */
-const HINT_AUTO_HIDE_DELAY = 3000; // 5 seconds – change here
+const HINT_AUTO_HIDE_DELAY = 3000; // 3 seconds – change here
 const $hintBar = document.getElementById('hint-bar');
 let hintTimer = null;
 
@@ -251,7 +271,27 @@ function saveHistory() {
 }
 
 function saveAliases() {
+    aliasCache = null;
     localStorage.setItem(STORAGE_ALIASES, JSON.stringify(user_aliases));
+}
+
+/* Count alias usage so frequently used ones rank higher */
+function recordAliasUse(key) {
+    if (!key) return;
+    alias_uses[key] = (alias_uses[key] || 0) + 1;
+    localStorage.setItem(STORAGE_ALIAS_USES, JSON.stringify(alias_uses));
+}
+
+/* 0 … <0.4 bonus – enough to reorder prefix matches, never enough to beat an exact match */
+function useBonus(key) {
+    const n = alias_uses[key] || 0;
+    return 0.4 * (1 - 1 / (1 + n));
+}
+
+/* Open a URL here, or in a new tab (Ctrl/Cmd+Enter or Ctrl+click) */
+function navigate(url, newTab = false) {
+    if (newTab) window.open(url, '_blank', 'noopener');
+    else window.location.href = url;
 }
 
 function pushHistory(cmd) {
@@ -289,7 +329,7 @@ function logError(text) {
 }
 
 function escHtml(s) {
-    return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /* -- Fuzzy match – Sørensen–Dice coefficient --------------- */
@@ -336,7 +376,7 @@ function bestAlias(raw) {
     for (const key of Object.keys(aliases)) {
         let score;
         if (key.startsWith(input)) {
-            score = 0.9; // strong prefix match
+            score = 0.9 + useBonus(key) / 10; // strong prefix match; most-used wins ties
         } else {
             score = diceSimilarity(input, key);
         }
@@ -349,7 +389,42 @@ function bestAlias(raw) {
 }
 
 /* -- Utilities ---------------------------------------------- */
-function tryCalc(expr) {
+/* math.js is loaded lazily (local copy first, CDN as backup) so it never blocks the new tab */
+const MATHJS_SOURCES = [
+    'assets/math.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js'
+];
+const MATHY_RE = /^[\d\(\.\-\+]|^(sqrt|sin|cos|tan|log|exp|pi|e|abs|cbrt|ceil|floor|round)\b/i;
+let mathPromise = null;
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => {
+            s.remove();
+            reject();
+        };
+        document.head.appendChild(s);
+    });
+}
+
+function ensureMath() {
+    if (window.math) return Promise.resolve(true);
+    if (!mathPromise) {
+        mathPromise = MATHJS_SOURCES
+            .reduce((p, src) => p.catch(() => loadScript(src)), Promise.reject())
+            .then(() => true, () => {
+                mathPromise = null; // allow a retry later (e.g. back online)
+                return false;
+            });
+    }
+    return mathPromise;
+}
+
+async function tryCalc(expr) {
+    if (!(await ensureMath())) return null;
     try {
         const result = math.evaluate(expr);
         if (typeof result === 'function') return null;
@@ -365,35 +440,30 @@ function tryCalc(expr) {
 /* Improved timezone using Intl.DateTimeFormat (Cached) */
 const tzFormatters = new Map(); // Store formatters to save CPU
 
+function formatZoneTime(tz, label) {
+    const cacheKey = tz || 'local';
+    if (!tzFormatters.has(cacheKey)) {
+        tzFormatters.set(cacheKey, new Intl.DateTimeFormat('en-GB', {
+            ...(tz ? { timeZone: tz } : {}),
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZoneName: 'shortOffset',
+        }));
+    }
+    const parts = tzFormatters.get(cacheKey).formatToParts(new Date());
+    const timeStr = parts.filter(p => p.type !== 'timeZoneName').map(p => p.value).join('').replace(/,/g, '');
+    const offset = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    return `${label}: (${offset}) ${timeStr}`;
+}
+
 function getWorldTime(cityRaw) {
     const key = cityRaw.toLowerCase().replace(/\s+/g, '');
     const tz = CITY_TZ[key] || CITY_TZ[cityRaw.toLowerCase()];
     if (!tz) return null;
-
     try {
-        const now = new Date();
-
-        // If we haven't checked this timezone yet, create and store it
-        if (!tzFormatters.has(tz)) {
-            tzFormatters.set(tz, new Intl.DateTimeFormat('en-GB', {
-                timeZone: tz,
-                weekday: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-                timeZoneName: 'shortOffset',
-            }));
-        }
-
-        // Retrieve the cached formatter
-        const formatter = tzFormatters.get(tz);
-        const parts = formatter.formatToParts(now);
-
-        const timeStr = parts.filter(p => p.type !== 'timeZoneName').map(p => p.value).join('').replace(/,/g, '');
-        const offset = parts.find(p => p.type === 'timeZoneName')?.value || '';
-        const displayCity = cityRaw.replace(/\b\w/g, c => c.toUpperCase());
-
-        return `${displayCity}: (${offset}) ${timeStr}`;
+        return formatZoneTime(tz, cityRaw.replace(/\b\w/g, c => c.toUpperCase()));
     } catch {
         return null;
     }
@@ -429,13 +499,13 @@ function tryClear(input) {
     return null;
 }
 
-function tryCalculator(input) {
+async function tryCalculator(input) {
     const {
         head,
         tail
     } = parseHeadTail(input);
     if (head !== '=' || !tail) return null;
-    const result = tryCalc(tail);
+    const result = await tryCalc(tail);
     return result !== null ? {
         type: 'local',
         output: result
@@ -446,11 +516,9 @@ function tryCalculator(input) {
     };
 }
 
-function tryMathExpression(input) {
-    // Slightly improved regex: now also allows leading '-' or '+' etc.
-    const isMathy = /^[\d\(\.\-\+]|^(sqrt|sin|cos|tan|log|exp|pi|e|abs|cbrt|ceil|floor|round)\b/i;
-    if (!isMathy.test(input)) return null;
-    const result = tryCalc(input);
+async function tryMathExpression(input) {
+    if (!MATHY_RE.test(input)) return null;
+    const result = await tryCalc(input);
     if (result !== null && result !== input) {
         return {
             type: 'local',
@@ -465,7 +533,11 @@ function tryTime(input) {
         head,
         tail
     } = parseHeadTail(input);
-    if (head !== 'time' || !tail) return null;
+    if (head !== 'time') return null;
+    if (!tail) return {
+        type: 'local',
+        output: formatZoneTime(null, 'Local')
+    };
     const t = getWorldTime(tail);
     return t ? {
         type: 'local',
@@ -481,10 +553,10 @@ function tryWeather(input) {
         head,
         tail
     } = parseHeadTail(input);
-    if (head === 'weather' && tail) {
+    if (head === 'weather') {
         return {
             type: 'weather',
-            city: tail
+            city: tail // empty → wttr.in uses your IP location
         };
     }
     return null;
@@ -495,14 +567,19 @@ const CURRENCY_CACHE_KEY = 'skb_currency_rates';
 const CURRENCY_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 async function tryCurrency(input) {
-    const match = input.match(/^(?:(\d+(?:\.\d+)?)\s+)?([a-z]{3})\s+(?:to\s+|in\s+)?([a-z]{3})$/i);
+    const match = input.match(/^(?:(\d+(?:\.\d+)?)\s*)?([a-z]{3})\s+(to\s+|in\s+)?([a-z]{3})$/i);
     if (!match) return null;
+    // Need an amount or "to"/"in" – otherwise "npm vue" or "amz usb" would hit the rates API
+    if (!match[1] && !match[3]) return null;
 
-    let amount = parseFloat(match[1]) || 1;
+    const amount = parseFloat(match[1]) || 1;
     const from = match[2].toUpperCase();
-    const to = match[3].toUpperCase();
+    const to = match[4].toUpperCase();
+    if (from === to) return null;
 
-    if (from.length !== 3 || to.length !== 3 || from === to) return null;
+    // With cached rates, reject unknown codes without touching the network
+    const cached = loadJSON(CURRENCY_CACHE_KEY, null);
+    if (cached?.rates && (!cached.rates[from] || !cached.rates[to])) return null;
 
     try {
         const rates = await getCurrencyRates();
@@ -526,7 +603,7 @@ async function tryCurrency(input) {
 }
 
 async function getCurrencyRates() {
-    const cached = JSON.parse(localStorage.getItem(CURRENCY_CACHE_KEY) || 'null');
+    const cached = loadJSON(CURRENCY_CACHE_KEY, null);
     if (cached && Date.now() - cached.ts < CURRENCY_CACHE_TTL) {
         return cached.rates;
     }
@@ -544,31 +621,31 @@ async function getCurrencyRates() {
 }
 
 
+/* Build the redirect for alias `key`, with optional search text */
+function aliasAction(key, tail, extra = {}) {
+    const a = getAliases()[key];
+    let url;
+    if (!tail) url = a.nav || a.url.replace('%s', '');
+    else if (a.search) url = a.url.replace('%s', encodeURIComponent(tail));
+    else url = a.nav || a.url;
+    return {
+        type: 'redirect',
+        url,
+        alias: key,
+        ...extra
+    };
+}
+
 function tryExactAlias(input) {
     const {
         head,
         tail
     } = parseHeadTail(input);
-    const aliases = getAliases();
-    const a = aliases[head];
-    if (!a) return null;
-
-    if (!tail) return {
-        type: 'redirect',
-        url: a.nav || a.url.replace('%s', '')
-    };
-    if (a.search) return {
-        type: 'redirect',
-        url: a.url.replace('%s', encodeURIComponent(tail))
-    };
-    return {
-        type: 'redirect',
-        url: a.nav || a.url
-    };
+    return getAliases()[head] ? aliasAction(head, tail) : null;
 }
 
 function tryDirectUrl(input) {
-    if (/^https?:\/\//.test(input)) return {
+    if (/^https?:\/\//i.test(input)) return {
         type: 'redirect',
         url: input
     };
@@ -576,11 +653,19 @@ function tryDirectUrl(input) {
 }
 
 function tryDomainRouting(input) {
-    // Now matches: something.com, sub.something.com, a.b.c.co, etc.
-    if (/^[\w\-]+(\.[\w\-]+)*\.(com|org|net|io|dev|ph|co|app|ai|me|gg|tv|ly)/i.test(input.trim())) {
+    const s = input.trim();
+    if (/\s/.test(s)) return null; // "example.com is down" should be a search, not a URL
+    // localhost / IP addresses (dev servers) → plain http
+    if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?([\/?#]\S*)?$/i.test(s)) {
         return {
             type: 'redirect',
-            url: `https://${input.trim()}`
+            url: `http://${s}`
+        };
+    }
+    if (/^[\w-]+(\.[\w-]+)*\.(com|org|net|io|dev|ph|co|app|ai|me|gg|tv|ly)(:\d+)?([\/?#]\S*)?$/i.test(s)) {
+        return {
+            type: 'redirect',
+            url: `https://${s}`
         };
     }
     return null;
@@ -592,26 +677,9 @@ function tryFuzzyAlias(input) {
         tail
     } = parseHeadTail(input);
     const fuzzy = bestAlias(head);
-    if (!fuzzy) return null;
-
-    const aliases = getAliases();
-    const a = aliases[fuzzy];
-    const hint = `→ ${fuzzy}`;
-    if (!tail) return {
-        type: 'redirect',
-        url: a.nav || a.url.replace('%s', ''),
-        fuzzy_hint: hint
-    };
-    if (a.search) return {
-        type: 'redirect',
-        url: a.url.replace('%s', encodeURIComponent(tail)),
-        fuzzy_hint: hint
-    };
-    return {
-        type: 'redirect',
-        url: a.nav || a.url,
-        fuzzy_hint: hint
-    };
+    return fuzzy ? aliasAction(fuzzy, tail, {
+        fuzzy_hint: `→ ${fuzzy}`
+    }) : null;
 }
 
 function tryFallbackSearch(input) {
@@ -647,7 +715,7 @@ async function resolve(raw) {
 }
 
 /* -- Execute ------------------------------------------------ */
-async function execute(raw) {
+async function execute(raw, newTab = false) {
     const input = raw.trim();
     if (!input) return;
 
@@ -684,31 +752,28 @@ async function execute(raw) {
         const weatherUrl = `https://wttr.in/${encodeURIComponent(action.city)}?format=%l:+%C+%t+%w`;
         fetch(weatherUrl)
             .then(r => r.ok ? r.text() : Promise.reject())
-            .then(htmlString => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(htmlString, 'text/html');
-                const plaintext = doc.body.textContent.trim();
+            .then(text => {
+                const plaintext = text.trim();
                 logResult(plaintext || 'No data found.');
                 console.log(`[Startpage] Weather Fetch Result: ${plaintext}`);
             })
             .catch(() => {
-                logError(`Could not fetch weather for ${action.city}`);
+                logError(`Could not fetch weather for ${action.city || 'your location'}`);
                 console.error(`[Startpage] Weather Fetch Failed for "${action.city}"`);
             });
         return;
     }
 
     if (action.type === 'redirect') {
+        if (action.alias) recordAliasUse(action.alias);
         if (action.fuzzy_hint) {
             logCmd(input);
             logResult(`navigating ${action.fuzzy_hint}`);
             $cmd.value = '';
-            setTimeout(() => {
-                window.location.href = action.url;
-            }, 180);
+            setTimeout(() => navigate(action.url, newTab), 180);
         } else {
             $cmd.value = '';
-            window.location.href = action.url; // or location.replace(action.url)
+            navigate(action.url, newTab);
         }
     }
 }
@@ -756,16 +821,17 @@ function buildSuggestions(val) {
             items.push({
                 label,
                 dest,
+                key,
                 tag: 'alias',
-                score: key === head ? 2 : 1.5
+                score: key === head ? 2 : 1.5 + useBonus(key)
             });
         }
     }
 
     // History – most recent first
-    for (const h of history_list) {
-        if (h.toLowerCase().startsWith(input) && h.toLowerCase() !== input) {
-            const idx = history_list.indexOf(h); // 0 = most recent
+    history_list.forEach((h, idx) => { // idx 0 = most recent
+        const hl = h.toLowerCase();
+        if (hl.startsWith(input) && hl !== input) {
             // Score: 2 for most recent, scaling down to 1 for oldest
             const score = 1 + (history_list.length - idx) / history_list.length;
             items.push({
@@ -775,7 +841,7 @@ function buildSuggestions(val) {
                 score
             });
         }
-    }
+    });
 
     // Fuzzy alias suggestions when no query typed
     if (!hasQuery && items.length < 3) {
@@ -821,9 +887,10 @@ function renderSuggestions() {
         el.addEventListener('mousedown', e => {
             e.preventDefault();
         });
-        el.addEventListener('click', () => {
+        el.addEventListener('click', e => {
             if (s.dest) {
-                window.location.href = s.dest;
+                if (s.key) recordAliasUse(s.key);
+                navigate(s.dest, e.ctrlKey || e.metaKey);
             } else {
                 $cmd.value = s.label;
                 buildSuggestions(s.label);
@@ -847,22 +914,32 @@ $cmd.addEventListener('input', () => {
     clearTimeout(debounceTimer);
     hist_idx = -1;
     debounceTimer = setTimeout(() => buildSuggestions($cmd.value), 50);
+    // Start loading math.js as soon as the input looks like maths, so it's ready by Enter
+    const v = $cmd.value.trim();
+    if (v.startsWith('=') || MATHY_RE.test(v)) ensureMath();
 });
 
 $cmd.addEventListener('keydown', e => {
     clearTimeout(debounceTimer); // cancel any pending suggestion rebuild
     switch (e.key) {
         case 'Enter': {
-            if (sug_idx >= 0 && current_sugs[sug_idx]?.dest) {
+            const newTab = e.ctrlKey || e.metaKey;
+            const sug = sug_idx >= 0 ? current_sugs[sug_idx] : null;
+            if (sug?.dest) {
                 e.preventDefault();
-                window.location.href = current_sugs[sug_idx].dest;
+                if (sug.key) recordAliasUse(sug.key);
+                if (newTab) {
+                    $cmd.value = '';
+                    clearSuggestions();
+                }
+                navigate(sug.dest, newTab);
             } else if (sug_idx >= 0 && current_sugs[sug_idx]) {
                 e.preventDefault();
                 $cmd.value = current_sugs[sug_idx].label;
                 clearSuggestions();
             } else {
                 e.preventDefault();
-                execute($cmd.value);
+                execute($cmd.value, newTab);
             }
             break;
         }
@@ -1108,11 +1185,7 @@ function enterEditMode(row, key, focusTarget = 'key') {
             return;
         }
         delete user_aliases[key];
-        user_aliases[newKey] = {
-            url: newUrl,
-            search: newUrl.includes('%s'),
-            nav: newUrl.includes('%s') ? newUrl.split('%s')[0].replace(/[\?\&][^?&=]+=?$/, '') : newUrl
-        };
+        user_aliases[newKey] = makeAliasEntry(newUrl);
         saveAliases();
         // Re-render the whole list – the editing row will be destroyed and rebuilt
         renderAliasList();
@@ -1231,6 +1304,7 @@ populateThemeSelect();
 // Apply a theme and save preference
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
+    matrixStyle = null; // matrix rain re-reads colours on its next frame
     localStorage.setItem(THEME_STORAGE_KEY, theme);
     if ($themeSelect) $themeSelect.value = theme;
 }
@@ -1317,18 +1391,67 @@ function saveAlias() {
         logResult(`Overriding built-in alias "${key}".`);
     }
 
-    const search = url.includes('%s');
-    user_aliases[key] = {
-        url,
-        search,
-        nav: search ? url.split('%s')[0].replace(/[\?\&][^?&=]+=?$/, '') : url
-    };
+    user_aliases[key] = makeAliasEntry(url);
     saveAliases();
     $aliasKey.value = '';
     $aliasUrl.value = '';
     renderAliasList();
     $aliasKey.focus();
 }
+
+/* Build a stored alias from a URL; %s marks where the search query goes */
+function makeAliasEntry(url) {
+    const search = url.includes('%s');
+    return {
+        url,
+        search,
+        nav: search ? url.split('%s')[0].replace(/[\?\&][^?&=]+=?$/, '') : url
+    };
+}
+
+/* -- Alias backup (export / import JSON) ---------------------- */
+const $aliasExport = document.getElementById('alias-export');
+const $aliasImport = document.getElementById('alias-import');
+const $aliasImportFile = document.getElementById('alias-import-file');
+
+$aliasExport.addEventListener('click', () => {
+    const data = JSON.stringify({
+        version: 1,
+        aliases: user_aliases
+    }, null, 2);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], {
+        type: 'application/json'
+    }));
+    a.download = `startpage-aliases-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+$aliasImport.addEventListener('click', () => $aliasImportFile.click());
+
+$aliasImportFile.addEventListener('change', async () => {
+    const file = $aliasImportFile.files[0];
+    $aliasImportFile.value = '';
+    if (!file) return;
+    try {
+        const parsed = JSON.parse(await file.text());
+        const incoming = parsed.aliases || parsed; // accepts an export file or a plain {key: url} map
+        let count = 0;
+        for (const [k, v] of Object.entries(incoming)) {
+            const key = String(k).trim().toLowerCase();
+            const url = typeof v === 'string' ? v : v?.url;
+            if (!key || /\s/.test(key) || typeof url !== 'string' || !url.trim()) continue;
+            user_aliases[key] = makeAliasEntry(url.trim());
+            count++;
+        }
+        saveAliases();
+        renderAliasList();
+        logResult(`Imported ${count} alias${count === 1 ? '' : 'es'}.`);
+    } catch {
+        logError('Import failed: not a valid aliases JSON file.');
+    }
+});
 
 /* -- Ambient weather (cached 30 min) -------------------------- */
 (async function fetchWeather() {
@@ -1359,7 +1482,9 @@ function saveAlias() {
 /* -- Matrix Rain (high‑DPI, zoom‑proof) -------------------- */
 let matrixAnimationId = null;
 let lastDrawTime = 0;
-const MATRIX_FPS = 50;
+const MATRIX_FRAME_MS = 50; // ms between frames (~20 fps)
+let matrixObserver = null;
+let matrixResize = null;
 let matrixCanvas = null;
 
 function startMatrix() {
@@ -1383,16 +1508,17 @@ function startMatrix() {
     let grid = [];
     let ratio = window.devicePixelRatio || 1;
 
-    function getThemeColors() {
+    // Read once, and again only after a theme change (applyTheme clears matrixStyle)
+    function readMatrixStyle() {
         const style = getComputedStyle(document.body);
         return {
             bg: style.getPropertyValue('--base00').trim() || '#000000',
-            fg: style.getPropertyValue('--accent').trim() || '#00FF00'
+            fg: style.getPropertyValue('--accent').trim() || '#00FF00',
+            font: `${fontSize}px ${style.fontFamily}`
         };
     }
 
     function resize() {
-        // [Keep your existing resize logic here - it is already well written]
         if (!matrixCanvas || !matrixCanvas.isConnected) return;
 
         const rect = matrixCanvas.getBoundingClientRect();
@@ -1434,19 +1560,19 @@ function startMatrix() {
 
     function draw(timestamp) {
         // Throttle the frame rate to match your original 50ms interval
-        if (timestamp - lastDrawTime < MATRIX_FPS) {
+        if (timestamp - lastDrawTime < MATRIX_FRAME_MS) {
             matrixAnimationId = requestAnimationFrame(draw);
             return;
         }
         lastDrawTime = timestamp;
 
-        const colors = getThemeColors();
+        if (!matrixStyle) matrixStyle = readMatrixStyle();
+        const colors = matrixStyle;
         ctx.globalAlpha = 1.0;
         ctx.fillStyle = colors.bg;
         ctx.fillRect(0, 0, matrixCanvas.width / ratio, matrixCanvas.height / ratio);
         ctx.fillStyle = colors.fg;
-        const fontFamily = getComputedStyle(document.body).fontFamily;
-        ctx.font = `${fontSize}px ${fontFamily}`;
+        ctx.font = colors.font;
 
         for (let i = 0; i < cols; i++) {
             if (drops[i] >= 0 && drops[i] < rows) {
@@ -1473,8 +1599,11 @@ function startMatrix() {
     resize();
     matrixAnimationId = requestAnimationFrame(draw); // Kick off the loop
 
-    const observer = new ResizeObserver(resize);
-    observer.observe(matrixCanvas);
+    // One observer for the page's lifetime (used to leak one per `clear`); it calls the latest resize()
+    matrixResize = resize;
+    if (!matrixObserver) matrixObserver = new ResizeObserver(() => matrixResize && matrixResize());
+    matrixObserver.disconnect();
+    matrixObserver.observe(matrixCanvas);
     matrixCanvas.style.display = 'block';
 }
 

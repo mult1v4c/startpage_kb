@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Fira+Code:wght@400;500&display=swap');
+/* Fonts are loaded via <link> in index.html (faster than @import) */
 
 /* -- Reset -------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -416,6 +416,23 @@ html, body {
   line-height: var(--lh);
 }
 .config-hint code { color: var(--accent); }
+
+#alias-io-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.alias-io-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: var(--fs);
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.alias-io-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
 
 /* -- Hint bar ----------------------------------------------- */
 #hint-bar {
